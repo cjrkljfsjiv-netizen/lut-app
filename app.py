@@ -268,7 +268,7 @@ canvas{{width:100%;height:100%;object-fit:cover;display:block;}}
 #ev-readout{{
   font-size:11px;font-weight:400;
   letter-spacing:0.08em;
-  color:rgba(255,255,255,0;
+  color:rgba(255,255,255,0);
   opacity:0;transition:opacity 0.3s;
   font-variant-numeric:tabular-nums;
 }}
