@@ -294,8 +294,17 @@ const LUT_NAMES = {lut_names_js};
 const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
 
-// LUT 文件路径：动态获取，兼容本地和 Cloud
-const LUT_BASE = window.location.origin + '/app/static/luts';
+// LUT 文件路径：尝试多个可能的 base URL
+function getLUTBase() {
+  // 从 iframe 找父页面 origin
+  try {
+    if (window.parent && window.parent.location.origin) {
+      return window.parent.location.origin + '/app/static/luts';
+    }
+  } catch(e) {}
+  return window.location.origin + '/app/static/luts';
+}
+const LUT_BASE = getLUTBase();
 
 // ── WebGL
 const canvas = document.getElementById('c');
@@ -361,6 +370,24 @@ function parseCube(text){{
   return {{size,data:new Float32Array(data)}};
 }}
 
+// Identity LUT：直通，不改变颜色，作为默认值
+function uploadIdentityLUT() {
+  const size = 2;
+  const n = size*size*size;
+  const rgba = new Uint8Array(n*4);
+  let i = 0;
+  for(let b=0;b<size;b++) for(let g=0;g<size;g++) for(let r=0;r<size;r++) {
+    rgba[i*4]   = r * 255;
+    rgba[i*4+1] = g * 255;
+    rgba[i*4+2] = b * 255;
+    rgba[i*4+3] = 255;
+    i++;
+  }
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
+  gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA,size,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+  gl.uniform1f(uSize,size);
+}
+
 function uploadLUT(size,floatData){{
   const n=size*size*size,rgba=new Uint8Array(n*4);
   for(let i=0;i<n;i++){{
@@ -417,8 +444,9 @@ navigator.mediaDevices.getUserMedia({{
   video.addEventListener('loadedmetadata',()=>{{
     canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     gl.viewport(0,0,canvas.width,canvas.height);
-    switchLUT(LUT_NAMES[0]);
+    uploadIdentityLUT();       // 先显示原始画面
     requestAnimationFrame(render);
+    switchLUT(LUT_NAMES[0]);   // 异步加载真实 LUT
   }});
 }}).catch(()=>{{liveTag.textContent='NO CAM';}});
 
