@@ -18,11 +18,6 @@ st.set_page_config(
 )
 
 st.markdown("""
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="LUMEN">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#0c0c0b">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
 
@@ -299,9 +294,8 @@ const LUT_NAMES = {lut_names_js};
 const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
 
-// LUT 文件路径：Streamlit 静态服务
-// 本地和 Cloud 都是 /app/static/luts/
-const LUT_BASE = '/app/static/luts';
+// LUT 文件路径：动态获取，兼容本地和 Cloud
+const LUT_BASE = window.location.origin + '/app/static/luts';
 
 // ── WebGL
 const canvas = document.getElementById('c');
