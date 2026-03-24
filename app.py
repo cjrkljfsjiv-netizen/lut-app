@@ -182,6 +182,18 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LUTS_DIR   = os.path.join(SCRIPT_DIR, "assets", "luts")
 os.makedirs(LUTS_DIR, exist_ok=True)
 
+# 检测运行环境，生成正确的静态文件 URL
+IS_CLOUD = os.path.exists('/mount/src')
+if IS_CLOUD:
+    # Streamlit Cloud：从环境变量或固定域名获取
+    STREAMLIT_URL = os.environ.get(
+        'STREAMLIT_URL',
+        'https://lut-app-jmn3qyy52uthn4vmqk9jix.streamlit.app'
+    )
+    LUT_STATIC_BASE = f"{STREAMLIT_URL}/app/static/luts"
+else:
+    LUT_STATIC_BASE = "http://localhost:8501/app/static/luts" 
+
 
 # ══════════════════════════════════════
 # 相机组件
@@ -189,7 +201,7 @@ os.makedirs(LUTS_DIR, exist_ok=True)
 # 本地：/app/static/luts/xxx.cube
 # ══════════════════════════════════════
 
-def camera_component(lut_names: list, height: int = 720):
+def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 720):
     lut_names_js = json.dumps(lut_names)
 
     html = f"""
@@ -294,16 +306,7 @@ const LUT_NAMES = {lut_names_js};
 const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
 
-// LUT base URL
-function getLUTBase() {{
-  try {{
-    if (window.parent && window.parent.location.origin) {{
-      return window.parent.location.origin + '/app/static/luts';
-    }}
-  }} catch(e) {{}}
-  return window.location.origin + '/app/static/luts';
-}}
-const LUT_BASE = getLUTBase();
+const LUT_BASE = "{lut_base_url}";
 
 // ── WebGL
 const canvas = document.getElementById('c');
@@ -541,7 +544,7 @@ if is_camera:
     if not lut_names:
         st.markdown('<div class="g-empty"><div class="g-empty-txt">请先添加 LUT 文件</div></div>',unsafe_allow_html=True)
     else:
-        camera_component(lut_names)
+        camera_component(lut_names, LUT_STATIC_BASE)
 else:
     if not uploaded:
         st.markdown("""
