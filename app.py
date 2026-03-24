@@ -295,15 +295,14 @@ const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
 
 // LUT base URL
-function getLUTBase() {
-  // try parent origin
-  try {
-    if (window.parent && window.parent.location.origin) {
+function getLUTBase() {{
+  try {{
+    if (window.parent && window.parent.location.origin) {{
       return window.parent.location.origin + '/app/static/luts';
-    }
-  } catch(e) {}
+    }}
+  }} catch(e) {{}}
   return window.location.origin + '/app/static/luts';
-}
+}}
 const LUT_BASE = getLUTBase();
 
 // ── WebGL
@@ -371,22 +370,22 @@ function parseCube(text){{
 }}
 
 // Identity LUT: passthrough, no color change
-function uploadIdentityLUT() {
+function uploadIdentityLUT() {{
   const size = 2;
   const n = size*size*size;
   const rgba = new Uint8Array(n*4);
   let i = 0;
-  for(let b=0;b<size;b++) for(let g=0;g<size;g++) for(let r=0;r<size;r++) {
+  for(let b=0;b<size;b++) for(let g=0;g<size;g++) for(let r=0;r<size;r++) {{
     rgba[i*4]   = r * 255;
     rgba[i*4+1] = g * 255;
     rgba[i*4+2] = b * 255;
     rgba[i*4+3] = 255;
     i++;
-  }
+  }}
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
   gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA,size,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
   gl.uniform1f(uSize,size);
-}
+}}
 
 function uploadLUT(size,floatData){{
   const n=size*size*size,rgba=new Uint8Array(n*4);
