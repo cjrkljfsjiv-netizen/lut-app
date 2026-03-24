@@ -677,51 +677,49 @@ document.getElementById('shutter').addEventListener('pointerdown',e=>{{
 
 st.markdown("""
 <div class="g-topbar">
-  <span class="g-logo">LU<span class="g-accent">·</span>MEN</span>
-  <span class="g-sub">LUT Color Studio &nbsp;/&nbsp; v0.6</span>
+  <span class="g-logo">LUMEN</span>
 </div>
 """, unsafe_allow_html=True)
 
 all_luts  = scan_luts(LUTS_DIR)
 lut_names = list(all_luts.keys())
 
-col_mode,col_s0,col_l2,col_lut,col_s2,col_ul,col_s3,col_dl = \
-    st.columns([1.4,0.1,3,0.1,0.35,2.5,0.1,1.2])
+col_mode, col_spacer, col_photo_controls = st.columns([1.4, 0.1, 8])
 
 with col_mode:
     mode = st.radio("mode",["📷  照片","🎥  相机"],horizontal=True,label_visibility="collapsed")
 
 is_camera = "相机" in mode
 
-with col_s0:
-    st.markdown('<div class="g-sep-line"></div>',unsafe_allow_html=True)
-
-with col_l2:
-    if not is_camera and all_luts:
-        sel_name = st.selectbox("lut",lut_names,label_visibility="collapsed")
-        sel_path = all_luts[sel_name]
-    else:
-        sel_name = lut_names[0] if lut_names else None
-        sel_path = all_luts.get(sel_name)
-
-with col_s2:
-    if not is_camera:
+# 照片模式的控制在右侧展开
+if not is_camera:
+    with col_spacer:
         st.markdown('<div class="g-sep-line"></div>',unsafe_allow_html=True)
-
-with col_ul:
-    uploaded = st.file_uploader("p",type=["jpg","jpeg","png","tiff"],
-                                 label_visibility="collapsed") if not is_camera else None
-
-with col_s3:
-    if not is_camera:
-        st.markdown('<div class="g-sep-line"></div>',unsafe_allow_html=True)
-
-with col_dl:
-    if not is_camera and uploaded and sel_path:
-        img_bytes = uploaded.read()
-        result    = process_image(img_bytes,sel_path)
-        fname     = f"{os.path.splitext(uploaded.name)[0]}_{sel_name}.jpg"
-        st.download_button("⬇ 导出",to_jpeg(result),fname,"image/jpeg")
+    with col_photo_controls:
+        sub1, sub2, sub3, sub4, sub5 = st.columns([0.3, 3.5, 0.1, 2.5, 1.2])
+        with sub1:
+            st.markdown('<div class="g-ctrl-label">LUT</div>',unsafe_allow_html=True)
+        with sub2:
+            if all_luts:
+                sel_name = st.selectbox("lut",lut_names,label_visibility="collapsed")
+                sel_path = all_luts[sel_name]
+            else:
+                sel_name = sel_path = None
+        with sub3:
+            st.markdown('<div class="g-sep-line"></div>',unsafe_allow_html=True)
+        with sub4:
+            uploaded = st.file_uploader("p",type=["jpg","jpeg","png","tiff"],
+                                         label_visibility="collapsed")
+        with sub5:
+            if uploaded and sel_path:
+                img_bytes = uploaded.read()
+                result    = process_image(img_bytes,sel_path)
+                fname     = f"{os.path.splitext(uploaded.name)[0]}_{sel_name}.jpg"
+                st.download_button("⬇ 导出",to_jpeg(result),fname,"image/jpeg")
+else:
+    sel_name = lut_names[0] if lut_names else None
+    sel_path = all_luts.get(sel_name)
+    uploaded = None
 
 st.markdown('<div style="height:1px;background:#1c1c1a;margin-top:0.5rem;"></div>',unsafe_allow_html=True)
 
