@@ -188,7 +188,7 @@ if IS_CLOUD:
     # Streamlit Cloud：从环境变量或固定域名获取
     STREAMLIT_URL = os.environ.get(
         'STREAMLIT_URL',
-        'https://lut-app-jmn3qyy52uthn4vmqk9jix.streamlit.app'
+        'https://lumen-studio.streamlit.app'
     )
     LUT_STATIC_BASE = f"{STREAMLIT_URL}/app/static/luts"
 else:
@@ -412,14 +412,23 @@ async function switchLUT(name){{
   document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===name));
   try{{
     if(!LUT_CACHE[name]){{
-      const r=await fetch(`${{LUT_BASE}}/${{encodeURIComponent(name)}}.cube`);
-      LUT_CACHE[name]=parseCube(await r.text());
+      const url=`${{LUT_BASE}}/${{encodeURIComponent(name)}}.cube`;
+      console.log('Fetching LUT:', url);
+      const r=await fetch(url);
+      if(!r.ok) throw new Error('HTTP '+r.status+' '+url);
+      const text=await r.text();
+      if(!text||text.length<10) throw new Error('Empty LUT');
+      LUT_CACHE[name]=parseCube(text);
     }}
     const {{size,data}}=LUT_CACHE[name];
+    if(!data||data.length===0) throw new Error('Bad LUT data');
     uploadLUT(size,data);
     currentName=name;
     lutLabel.textContent=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
-  }}catch(e){{console.error(e);}}
+  }}catch(e){{
+    console.error('LUT failed:',e);
+    document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===currentName));
+  }}
   finally{{overlay.classList.remove('show');}}
 }}
 
