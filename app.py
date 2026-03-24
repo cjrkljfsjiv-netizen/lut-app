@@ -199,361 +199,242 @@ else:
 
 def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 820):
     lut_names_js = json.dumps(lut_names)
-
-    html = f"""
-<!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
-  * {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
+*{{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}}
+body{{
+  background:#0a0a0a;
+  font-family:-apple-system,sans-serif;
+  height:100svh;overflow:hidden;
+  user-select:none;color:#fff;
+}}
 
-  body {{
-    background:#000;
-    font-family: -apple-system, 'SF Pro Text', sans-serif;
-    height: 100svh;
-    overflow: hidden;
-    user-select: none;
-    color: #fff;
-  }}
+/* 全屏画布 */
+#viewer{{position:fixed;inset:0;background:#000;}}
+canvas{{width:100%;height:100%;object-fit:cover;display:block;}}
 
-  /* ── 全屏取景器 ── */
-  #viewer {{
-    position: fixed;
-    inset: 0;
-    background: #000;
-  }}
-  canvas {{
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-  }}
+/* 闪光 */
+#flash{{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:100;transition:opacity 0.04s;}}
+#flash.go{{opacity:0.9;}}
 
-  /* ── 闪光 ── */
-  #flash {{
-    position: fixed; inset: 0;
-    background: #fff; opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.04s;
-    z-index: 100;
-  }}
-  #flash.go {{ opacity: 0.8; }}
+/* 对焦框 */
+#focus-box{{
+  position:fixed;width:60px;height:60px;
+  border:1px solid rgba(255,255,255,0.9);
+  opacity:0;pointer-events:none;z-index:10;
+  transform:translate(-50%,-50%);
+  transition:opacity 0.15s;
+}}
+#focus-box.show{{opacity:1;}}
 
-  /* ── 顶部 HUD ── */
-  #hud-top {{
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    padding: env(safe-area-inset-top, 12px) 20px 12px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    z-index: 10;
-    background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
-  }}
-  .hud-pill {{
-    background: rgba(0,0,0,0.45);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border-radius: 20px;
-    padding: 5px 12px;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    color: rgba(255,255,255,0.85);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }}
-  .hud-pill.live {{ color: #f0c040; }}
-  .hud-dot {{
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #f0c040;
-    animation: pulse 1.5s ease-in-out infinite;
-  }}
-  @keyframes pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.3; }} }}
+/* Loading */
+#loading-overlay{{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.6);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:50;
+}}
+#loading-overlay.show{{opacity:1;}}
+.loading-ring{{
+  width:24px;height:24px;
+  border:1.5px solid rgba(255,255,255,0.15);
+  border-top-color:rgba(255,255,255,0.8);
+  border-radius:50%;
+  animation:spin 0.8s linear infinite;
+}}
+@keyframes spin{{to{{transform:rotate(360deg);}}}}
 
-  /* 曝光指示 */
-  #ev-hud {{
-    font-size: 13px;
-    font-weight: 600;
-    color: #f0c040;
-    opacity: 0;
-    transition: opacity 0.3s;
-    min-width: 60px;
-    text-align: center;
-  }}
-  #ev-hud.show {{ opacity: 1; }}
+/* 顶部：极简状态 */
+#hud-top{{
+  position:fixed;top:0;left:0;right:0;
+  padding:max(14px,env(safe-area-inset-top)) 20px 10px;
+  display:flex;align-items:center;justify-content:space-between;
+  z-index:10;
+  background:linear-gradient(to bottom,rgba(0,0,0,0.4) 0%,transparent 100%);
+}}
+#live-indicator{{
+  width:6px;height:6px;border-radius:50%;
+  background:rgba(255,255,255,0.3);
+}}
+#live-indicator.on{{
+  background:#ff3b30;
+  box-shadow:0 0 6px #ff3b30;
+}}
+#ev-readout{{
+  font-size:11px;font-weight:400;
+  letter-spacing:0.08em;
+  color:rgba(255,255,255,0;
+  opacity:0;transition:opacity 0.3s;
+  font-variant-numeric:tabular-nums;
+}}
+#ev-readout.show{{opacity:0.8;}}
+#lut-readout{{
+  font-size:10px;font-weight:300;
+  letter-spacing:0.12em;
+  color:rgba(255,255,255,0.45);
+  text-transform:uppercase;
+  max-width:120px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-align:right;
+}}
 
-  /* 当前 LUT 名 */
-  #lut-hud {{
-    font-size: 11px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.7);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }}
+/* 曝光滑条（右侧竖向） */
+#ev-bar{{
+  position:fixed;right:0;top:50%;
+  transform:translateY(-50%);
+  z-index:10;
+  padding:20px 14px;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.2s;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+}}
+#ev-bar.show{{opacity:1;pointer-events:all;}}
+#ev-slider{{
+  writing-mode:vertical-lr;direction:rtl;
+  -webkit-appearance:none;appearance:none;
+  width:2px;height:120px;
+  background:rgba(255,255,255,0.15);
+  outline:none;border-radius:1px;
+}}
+#ev-slider::-webkit-slider-thumb{{
+  -webkit-appearance:none;
+  width:18px;height:18px;border-radius:50%;
+  background:#fff;cursor:pointer;border:none;
+  box-shadow:0 1px 4px rgba(0,0,0,0.5);
+}}
+.ev-mark{{
+  font-size:9px;letter-spacing:0.05em;
+  color:rgba(255,255,255,0.3);
+  font-variant-numeric:tabular-nums;
+}}
 
-  /* ── 对焦框 ── */
-  #focus-box {{
-    position: fixed;
-    width: 72px; height: 72px;
-    border: 1.5px solid #f0c040;
-    border-radius: 4px;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 10;
-    transition: opacity 0.2s;
-    transform: translate(-50%, -50%);
-  }}
-  #focus-box::before, #focus-box::after {{
-    content: '';
-    position: absolute;
-    background: #f0c040;
-  }}
-  #focus-box::before {{ top: -6px; left: 50%; width: 1px; height: 12px; transform: translateX(-50%); }}
-  #focus-box::after  {{ left: -6px; top: 50%; height: 1px; width: 12px; transform: translateY(-50%); }}
-  #focus-box.show {{ opacity: 1; }}
+/* LUT 条带 */
+#lut-strip-wrap{{
+  position:fixed;
+  bottom:calc(110px + env(safe-area-inset-bottom,0px));
+  left:0;right:0;z-index:10;
+  padding:0 16px;
+}}
+#lut-strip{{
+  display:flex;gap:6px;
+  overflow-x:auto;padding:6px 0;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}}
+#lut-strip::-webkit-scrollbar{{display:none;}}
+.lut-pill{{
+  flex-shrink:0;
+  padding:4px 12px;border-radius:2px;
+  font-size:10px;font-weight:400;
+  letter-spacing:0.1em;text-transform:uppercase;
+  color:rgba(255,255,255,0.35);
+  background:rgba(0,0,0,0.3);
+  border:1px solid rgba(255,255,255,0.08);
+  cursor:pointer;transition:all 0.12s;white-space:nowrap;
+  -webkit-user-select:none;
+  backdrop-filter:blur(6px);
+  -webkit-backdrop-filter:blur(6px);
+}}
+.lut-pill.active{{
+  color:rgba(255,255,255,0.9);
+  border-color:rgba(255,255,255,0.5);
+  background:rgba(255,255,255,0.08);
+}}
 
-  /* ── 曝光滑条（点击后弹出） ── */
-  #ev-bar {{
-    position: fixed;
-    right: 16px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 10;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s;
-  }}
-  #ev-bar.show {{ opacity: 1; pointer-events: all; }}
-  .ev-icon {{ font-size: 16px; }}
-  #ev-slider {{
-    writing-mode: vertical-lr;
-    direction: rtl;
-    -webkit-appearance: none;
-    appearance: none;
-    width: 4px;
-    height: 140px;
-    background: rgba(255,255,255,0.3);
-    border-radius: 2px;
-    outline: none;
-  }}
-  #ev-slider::-webkit-slider-thumb {{
-    -webkit-appearance: none;
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    background: #f0c040;
-    cursor: pointer;
-    border: 2px solid #fff;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-  }}
+/* 底部控制 */
+#controls{{
+  position:fixed;bottom:0;left:0;right:0;
+  padding:0 32px;
+  padding-bottom:max(24px,env(safe-area-inset-bottom));
+  height:calc(110px + env(safe-area-inset-bottom,0px));
+  display:flex;align-items:center;justify-content:space-between;
+  z-index:10;
+  background:linear-gradient(to top,rgba(0,0,0,0.45) 0%,transparent 100%);
+}}
 
-  /* ── LUT 选择条 ── */
-  #lut-strip-wrap {{
-    position: fixed;
-    bottom: calc(140px + env(safe-area-inset-bottom, 0px));
-    left: 0; right: 0;
-    z-index: 10;
-    padding: 0 16px;
-    opacity: 1;
-    transition: opacity 0.2s;
-  }}
-  #lut-strip {{
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-    padding: 8px 0;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }}
-  #lut-strip::-webkit-scrollbar {{ display: none; }}
+/* 缩放 */
+#zoom-btns{{display:flex;flex-direction:column;gap:4px;align-items:center;}}
+.zoom-btn{{
+  background:transparent;border:none;
+  color:rgba(255,255,255,0.4);
+  font-size:11px;font-weight:400;
+  letter-spacing:0.06em;
+  padding:4px 8px;cursor:pointer;
+  border-radius:2px;
+  transition:all 0.15s;
+  font-variant-numeric:tabular-nums;
+}}
+.zoom-btn.active{{
+  color:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.1);
+}}
 
-  .lut-pill {{
-    flex-shrink: 0;
-    padding: 5px 14px;
-    border-radius: 999px;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.03em;
-    color: rgba(255,255,255,0.55);
-    background: rgba(0,0,0,0.35);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.12);
-    cursor: pointer;
-    transition: all 0.15s;
-    white-space: nowrap;
-    -webkit-user-select: none;
-  }}
-  .lut-pill.active {{
-    color: #000;
-    background: #f0c040;
-    border-color: #f0c040;
-    font-weight: 600;
-  }}
-  .lut-pill.loading {{
-    opacity: 0.4;
-  }}
+/* EV 按钮 */
+#ev-btn{{
+  background:transparent;border:none;
+  color:rgba(255,255,255,0.4);
+  font-size:18px;cursor:pointer;
+  width:36px;height:36px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:50%;
+  transition:all 0.15s;
+}}
+#ev-btn.active{{
+  color:rgba(255,255,255,0.9);
+  background:rgba(255,255,255,0.1);
+}}
 
-  /* Loading overlay */
-  #loading-overlay {{
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,0.5);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 13px; letter-spacing: 0.1em; color: rgba(255,255,255,0.7);
-    text-transform: uppercase;
-    opacity: 0; pointer-events: none;
-    transition: opacity 0.2s;
-    z-index: 50;
-  }}
-  #loading-overlay.show {{ opacity: 1; }}
-
-  /* ── 底部控制栏 ── */
-  #controls {{
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    height: calc(130px + env(safe-area-inset-bottom, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    padding-bottom: max(20px, env(safe-area-inset-bottom));
-    z-index: 10;
-  }}
-
-  #shutter-row {{
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 40px;
-    gap: 0;
-    position: relative;
-  }}
-
-  /* 缩放显示 */
-  #zoom-display {{
-    position: absolute;
-    left: 40px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }}
-  .zoom-btn {{
-    background: rgba(0,0,0,0.4);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 999px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 6px 14px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }}
-  .zoom-btn.active {{
-    background: rgba(240,192,64,0.9);
-    color: #000;
-    border-color: #f0c040;
-  }}
-
-  /* EV 按钮 */
-  #ev-btn {{
-    position: absolute;
-    right: 40px;
-    background: rgba(0,0,0,0.4);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 999px;
-    color: #fff;
-    font-size: 13px;
-    font-weight: 500;
-    padding: 6px 12px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }}
-  #ev-btn.active {{ border-color: #f0c040; color: #f0c040; }}
-
-  /* 快门按钮 */
-  #shutter {{
-    width: 72px; height: 72px;
-    border-radius: 50%;
-    border: 3px solid #fff;
-    background: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: transform 0.1s;
-    flex-shrink: 0;
-  }}
-  #shutter:active {{ transform: scale(0.92); }}
-  #shutter-inner {{
-    width: 58px; height: 58px;
-    border-radius: 50%;
-    background: #fff;
-    transition: background 0.1s;
-  }}
-  #shutter:active #shutter-inner {{ background: rgba(255,255,255,0.7); }}
+/* 快门 */
+#shutter{{
+  width:68px;height:68px;
+  border-radius:50%;
+  border:2px solid rgba(255,255,255,0.85);
+  background:transparent;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  transition:transform 0.08s;
+  flex-shrink:0;
+}}
+#shutter:active{{transform:scale(0.93);}}
+#shutter-inner{{
+  width:54px;height:54px;
+  border-radius:50%;
+  background:rgba(255,255,255,0.88);
+  transition:background 0.08s;
+}}
+#shutter:active #shutter-inner{{background:rgba(255,255,255,0.5);}}
 </style>
 </head>
 <body>
-
 <div id="viewer"><canvas id="c"></canvas></div>
 <div id="flash"></div>
 <div id="focus-box"></div>
-<div id="loading-overlay">Loading...</div>
+<div id="loading-overlay"><div class="loading-ring"></div></div>
 
-<!-- 顶部 HUD -->
 <div id="hud-top">
-  <div class="hud-pill" id="live-tag">
-    <div class="hud-dot"></div>
-    <span>—</span>
-  </div>
-  <div id="ev-hud">EV +0.0</div>
-  <div id="lut-hud">—</div>
+  <div id="live-indicator"></div>
+  <div id="ev-readout">EV +0.0</div>
+  <div id="lut-readout">—</div>
 </div>
 
-<!-- 右侧曝光滑条 -->
 <div id="ev-bar">
-  <span class="ev-icon">☀️</span>
+  <span class="ev-mark">+2</span>
   <input type="range" id="ev-slider" min="-2" max="2" step="0.1" value="0">
-  <span class="ev-icon">🌑</span>
+  <span class="ev-mark">-2</span>
 </div>
 
-<!-- LUT 条带 -->
 <div id="lut-strip-wrap">
   <div id="lut-strip"></div>
 </div>
 
-<!-- 底部控制 -->
 <div id="controls">
-  <div id="shutter-row">
-    <div id="zoom-display">
-      <button class="zoom-btn active" data-zoom="1">1×</button>
-    </div>
-    <button id="shutter"><div id="shutter-inner"></div></button>
-    <button id="ev-btn">
-      <span>±</span>
-      <span id="ev-label">0.0</span>
-    </button>
-  </div>
+  <div id="zoom-btns"></div>
+  <button id="shutter"><div id="shutter-inner"></div></button>
+  <button id="ev-btn" title="Exposure">&#9675;&#65291;</button>
 </div>
 
 <script>
@@ -561,17 +442,15 @@ const LUT_NAMES = {lut_names_js};
 const LUT_BASE  = "{lut_base_url}";
 const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
-let evValue = 0;
-let zoomValue = 1;
-let evBarVisible = false;
+let evValue = 0, zoomValue = 1, evVisible = false;
 
-// ── WebGL
+// WebGL
 const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl2', {{ preserveDrawingBuffer: true, antialias: false }});
+const gl = canvas.getContext('webgl2', {{preserveDrawingBuffer:true}});
 
 const VS = `#version 300 es
 in vec2 aPos; out vec2 vUV;
-void main() {{
+void main(){{
   vUV = vec2(aPos.x*0.5+0.5, 0.5-aPos.y*0.5);
   gl_Position = vec4(aPos,0,1);
 }}`;
@@ -596,47 +475,42 @@ gl.attachShader(prog,mkS(gl.VERTEX_SHADER,VS));
 gl.attachShader(prog,mkS(gl.FRAGMENT_SHADER,FS));
 gl.linkProgram(prog); gl.useProgram(prog);
 
-const buf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
 gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
 const aPos=gl.getAttribLocation(prog,'aPos');
-gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
 
 const [uVideo,uLUT,uSize,uEV,uZoom]=['uVideo','uLUT','uSize','uEV','uZoom'].map(n=>gl.getUniformLocation(prog,n));
-gl.uniform1f(uEV,0); gl.uniform1f(uZoom,1);
+gl.uniform1f(uEV,0);gl.uniform1f(uZoom,1);
 
 const vTex=gl.createTexture();
-gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,vTex);
+gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,vTex);
 [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER].forEach(p=>gl.texParameteri(gl.TEXTURE_2D,p,gl.LINEAR));
 [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T].forEach(p=>gl.texParameteri(gl.TEXTURE_2D,p,gl.CLAMP_TO_EDGE));
 gl.uniform1i(uVideo,0);
 
 const lTex=gl.createTexture();
-gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
+gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_3D,lTex);
 [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER].forEach(p=>gl.texParameteri(gl.TEXTURE_3D,p,gl.LINEAR));
 [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R].forEach(p=>gl.texParameteri(gl.TEXTURE_3D,p,gl.CLAMP_TO_EDGE));
 gl.uniform1i(uLUT,1);
 
-// Identity LUT fallback
-function uploadIdentityLUT() {{
-  const size=2, n=8, rgba=new Uint8Array(n*4);
-  let i=0;
-  for(let b=0;b<size;b++) for(let g=0;g<size;g++) for(let r=0;r<size;r++) {{
-    rgba[i*4]=r*255; rgba[i*4+1]=g*255; rgba[i*4+2]=b*255; rgba[i*4+3]=255; i++;
-  }}
-  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
+function uploadIdentityLUT(){{
+  const rgba=new Uint8Array([0,0,0,255,255,0,0,255,0,255,0,255,255,255,0,255,0,0,255,255,255,0,255,255,0,255,255,255,255,255,255,255]);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_3D,lTex);
   gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA,2,2,2,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
   gl.uniform1f(uSize,2);
 }}
 
 function parseCube(text){{
   let size=33,data=[];
-  for(const raw of text.split('\n')){{
+  for(const raw of text.split('\\n')){{
     const line=raw.trim();
-    if(!line||line.startsWith('#')) continue;
-    if(line.startsWith('LUT_3D_SIZE')){{size=parseInt(line.split(/\s+/)[1]);continue;}}
-    if(/^[A-Z_]/.test(line)) continue;
-    const p=line.split(/\s+/),nums=p.map(Number);
-    if(p.length===3&&nums.every(n=>!isNaN(n))) data.push(...nums);
+    if(!line||line.startsWith('#'))continue;
+    if(line.startsWith('LUT_3D_SIZE')){{size=parseInt(line.split(/[\\s]+/)[1]);continue;}}
+    if(/^[A-Z_]/.test(line))continue;
+    const p=line.split(/[\\s]+/),nums=p.map(Number);
+    if(p.length===3&&nums.every(n=>!isNaN(n)))data.push(...nums);
   }}
   return {{size,data:new Float32Array(data)}};
 }}
@@ -649,44 +523,35 @@ function uploadLUT(size,floatData){{
     rgba[i*4+2]=Math.min(255,floatData[i*3+2]*255+.5)|0;
     rgba[i*4+3]=255;
   }}
-  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_3D,lTex);
   gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA,size,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
   gl.uniform1f(uSize,size);
 }}
 
-const overlay  = document.getElementById('loading-overlay');
-const lutHud   = document.getElementById('lut-hud');
-const liveTag  = document.getElementById('live-tag').querySelector('span');
+const overlay=document.getElementById('loading-overlay');
+const lutReadout=document.getElementById('lut-readout');
 
 async function switchLUT(name){{
-  if(name===currentName&&LUT_CACHE[name]) return;
+  if(name===currentName&&LUT_CACHE[name])return;
   overlay.classList.add('show');
-  document.querySelectorAll('.lut-pill').forEach(p=>{{
-    p.classList.toggle('active', p.dataset.name===name);
-    p.classList.toggle('loading', p.dataset.name===name&&!LUT_CACHE[name]);
-  }});
+  document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===name));
   try{{
     if(!LUT_CACHE[name]){{
-      const url=`${{LUT_BASE}}/${{encodeURIComponent(name)}}.cube`;
-      const r=await fetch(url);
-      if(!r.ok) throw new Error('HTTP '+r.status);
-      const text=await r.text();
-      LUT_CACHE[name]=parseCube(text);
+      const r=await fetch(LUT_BASE+'/'+encodeURIComponent(name)+'.cube');
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      LUT_CACHE[name]=parseCube(await r.text());
     }}
     const {{size,data}}=LUT_CACHE[name];
-    if(!data||data.length===0) throw new Error('Empty LUT');
+    if(!data||!data.length)throw new Error('empty');
     uploadLUT(size,data);
     currentName=name;
-    const display=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
-    lutHud.textContent=display;
+    lutReadout.textContent=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
+    document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===name));
   }}catch(e){{
-    console.error('LUT fail:',e);
+    console.error(e);
     document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===currentName));
   }}
-  finally{{
-    overlay.classList.remove('show');
-    document.querySelectorAll('.lut-pill').forEach(p=>p.classList.remove('loading'));
-  }}
+  finally{{overlay.classList.remove('show');}}
 }}
 
 // LUT 条带
@@ -702,127 +567,107 @@ LUT_NAMES.forEach(name=>{{
 
 // 摄像头
 const video=document.createElement('video');
-video.autoplay=true; video.playsInline=true; video.muted=true;
-
-let stream = null;
+video.autoplay=true;video.playsInline=true;video.muted=true;
+const liveIndicator=document.getElementById('live-indicator');
 
 navigator.mediaDevices.getUserMedia({{
   video:{{facingMode:'environment',width:{{ideal:1920}},height:{{ideal:1080}}}},audio:false
-}}).then(s=>{{
-  stream = s;
-  video.srcObject=s; video.play();
-  liveTag.textContent='LIVE';
+}}).then(stream=>{{
+  video.srcObject=stream;video.play();
+  liveIndicator.classList.add('on');
   video.addEventListener('loadedmetadata',()=>{{
-    canvas.width=video.videoWidth; canvas.height=video.videoHeight;
+    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
     gl.viewport(0,0,canvas.width,canvas.height);
     uploadIdentityLUT();
     requestAnimationFrame(render);
     switchLUT(LUT_NAMES[0]);
   }});
-}}).catch(()=>{{ liveTag.textContent='NO CAM'; }});
+}}).catch(()=>{{liveIndicator.style.background='#555';}});
 
 function render(){{
   if(video.readyState>=2){{
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,vTex);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,vTex);
     gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video);
     gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
   }}
   requestAnimationFrame(render);
 }}
 
-// ── 点击对焦 + 曝光
-const focusBox = document.getElementById('focus-box');
-document.getElementById('viewer').addEventListener('pointerdown', e=>{{
-  const x=e.clientX, y=e.clientY;
-  focusBox.style.left=x+'px';
-  focusBox.style.top=y+'px';
+// 点击对焦
+const focusBox=document.getElementById('focus-box');
+document.getElementById('viewer').addEventListener('pointerdown',e=>{{
+  if(e.target!==canvas)return;
+  focusBox.style.left=e.clientX+'px';focusBox.style.top=e.clientY+'px';
   focusBox.classList.add('show');
-  setTimeout(()=>focusBox.classList.remove('show'), 1200);
-  // 隐藏曝光条
-  evBarVisible=false;
-  document.getElementById('ev-bar').classList.remove('show');
-  document.getElementById('ev-btn').classList.remove('active');
+  clearTimeout(focusBox._t);
+  focusBox._t=setTimeout(()=>focusBox.classList.remove('show'),1000);
 }});
 
-// ── 缩放按钮
+// 缩放
 const zoomLevels=[1,2,3];
-let zoomIdx=0;
-const zoomDisplay=document.getElementById('zoom-display');
-zoomDisplay.innerHTML='';
+const zoomBtns=document.getElementById('zoom-btns');
 zoomLevels.forEach((z,i)=>{{
   const btn=document.createElement('button');
   btn.className='zoom-btn'+(i===0?' active':'');
-  btn.textContent=z+'×';
+  btn.textContent=z+'\u00d7';
   btn.dataset.zoom=z;
   btn.addEventListener('pointerdown',e=>{{
-    e.preventDefault();
-    zoomIdx=i; zoomValue=z;
-    gl.uniform1f(uZoom,z);
-    document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.toggle('active',b.dataset.zoom==z));
+    e.preventDefault();zoomValue=z;gl.uniform1f(uZoom,z);
+    document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.toggle('active',parseFloat(b.dataset.zoom)===z));
   }});
-  zoomDisplay.appendChild(btn);
+  zoomBtns.appendChild(btn);
 }});
 
-// Pinch-to-zoom
+// Pinch zoom
 let lastDist=0;
 document.getElementById('viewer').addEventListener('touchstart',e=>{{
-  if(e.touches.length===2){{
-    lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-  }}
+  if(e.touches.length===2)lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
 }},{{passive:true}});
 document.getElementById('viewer').addEventListener('touchmove',e=>{{
   if(e.touches.length===2){{
-    const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
-    const delta=dist/lastDist;
-    zoomValue=Math.max(1,Math.min(4,zoomValue*delta));
-    gl.uniform1f(uZoom,zoomValue);
-    lastDist=dist;
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    zoomValue=Math.max(1,Math.min(4,zoomValue*(d/lastDist)));
+    gl.uniform1f(uZoom,zoomValue);lastDist=d;
   }}
 }},{{passive:true}});
 
-// ── 曝光按钮
-const evBtn=document.getElementById('ev-btn');
+// 曝光
 const evBar=document.getElementById('ev-bar');
-const evHud=document.getElementById('ev-hud');
-const evLabel=document.getElementById('ev-label');
+const evBtn=document.getElementById('ev-btn');
+const evSlider=document.getElementById('ev-slider');
+const evReadout=document.getElementById('ev-readout');
 
 evBtn.addEventListener('pointerdown',e=>{{
-  e.preventDefault(); e.stopPropagation();
-  evBarVisible=!evBarVisible;
-  evBar.classList.toggle('show',evBarVisible);
-  evBtn.classList.toggle('active',evBarVisible);
+  e.preventDefault();e.stopPropagation();
+  evVisible=!evVisible;
+  evBar.classList.toggle('show',evVisible);
+  evBtn.classList.toggle('active',evVisible);
 }});
-
-document.getElementById('ev-slider').addEventListener('input',e=>{{
+evSlider.addEventListener('input',e=>{{
   evValue=parseFloat(e.target.value);
   gl.uniform1f(uEV,evValue);
-  const sign=evValue>=0?'+':'';
-  evLabel.textContent=sign+evValue.toFixed(1);
-  evHud.textContent='EV '+sign+evValue.toFixed(1);
-  evHud.classList.add('show');
-  clearTimeout(evHud._t);
-  evHud._t=setTimeout(()=>evHud.classList.remove('show'),2000);
+  const s=evValue>=0?'+':'';
+  evReadout.textContent='EV '+s+evValue.toFixed(1);
+  evReadout.classList.add('show');
+  clearTimeout(evReadout._t);
+  evReadout._t=setTimeout(()=>evReadout.classList.remove('show'),2000);
 }});
 
-// ── 快门
+// 快门
 const flash=document.getElementById('flash');
 document.getElementById('shutter').addEventListener('pointerdown',e=>{{
   e.preventDefault();
-  flash.classList.add('go');
-  setTimeout(()=>flash.classList.remove('go'),120);
+  flash.classList.add('go');setTimeout(()=>flash.classList.remove('go'),100);
   const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
-  const safeName=currentName.replace(/_33_Rec709/g,'');
   canvas.toBlob(blob=>{{
     const a=document.createElement('a');
-    a.download=`lumen_${{safeName}}_${{ts}}.jpg`;
-    a.href=URL.createObjectURL(blob); a.click();
-    URL.revokeObjectURL(a.href);
+    a.download='lumen_'+currentName.replace(/_33_Rec709/g,'')+'_'+ts+'.jpg';
+    a.href=URL.createObjectURL(blob);a.click();URL.revokeObjectURL(a.href);
   }},'image/jpeg',0.95);
 }});
 </script>
 </body>
-</html>
-"""
+</html>"""
     components.html(html, height=height, scrolling=False)
 
 
