@@ -1,0 +1,5 @@
+outputs/
+assets/photos/
+__pycache__/
+*.pyc
+.DS_Store
