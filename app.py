@@ -627,7 +627,7 @@ document.getElementById('viewer').addEventListener('pointerdown',e=>{{
 }});
 
 // 缩放
-const zoomLevels=[{label:'28mm',zoom:1},{label:'35mm',zoom:1.25},{label:'50mm',zoom:1.8}];
+const zoomLevels=[{{label:'28mm',zoom:1}},{{label:'35mm',zoom:1.25}},{{label:'50mm',zoom:1.8}}];
 const zoomBtns=document.getElementById('zoom-btns');
 zoomLevels.forEach((z,i)=>{{
   const btn=document.createElement('button');
