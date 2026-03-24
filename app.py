@@ -200,7 +200,7 @@ else:
 # 本地：/app/static/luts/xxx.cube
 # ══════════════════════════════════════
 
-def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 640):
+def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 680):
     lut_names_js = json.dumps(lut_names)
     html = f"""<!DOCTYPE html>
 <html>
@@ -210,251 +210,233 @@ def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501
 <meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 *{{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}}
-body{{
+html,body{{
   background:#0a0a0a;
   font-family:-apple-system,sans-serif;
-  height:100svh;overflow:hidden;position:fixed;width:100%;touch-action:none;
+  height:100%;overflow:hidden;position:fixed;width:100%;
   user-select:none;color:#fff;
+  touch-action:none;
 }}
 
-/* 全屏画布 */
-#viewer{{position:fixed;inset:0;background:#000;}}
+/* 取景器 — 圆角，留边距，DAZZ 风格 */
+#viewer{{
+  position:absolute;
+  top:0;left:0;right:0;
+  bottom:160px;
+  margin:0 0 0 0;
+  overflow:hidden;
+  border-radius:0 0 20px 20px;
+  background:#111;
+}}
 canvas{{width:100%;height:100%;object-fit:cover;display:block;}}
 
 /* 闪光 */
-#flash{{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:100;transition:opacity 0.04s;}}
-#flash.go{{opacity:0.9;}}
-
-/* 对焦框 */
-#focus-box{{
-  position:fixed;width:60px;height:60px;
-  border:1px solid rgba(255,255,255,0.9);
-  opacity:0;pointer-events:none;z-index:10;
-  transform:translate(-50%,-50%);
-  transition:opacity 0.15s;
+#flash{{
+  position:absolute;inset:0;border-radius:inherit;
+  background:#fff;opacity:0;pointer-events:none;z-index:50;
+  transition:opacity 0.04s;
 }}
-#focus-box.show{{opacity:1;}}
+#flash.go{{opacity:0.85;}}
 
 /* Loading */
-#loading-overlay{{
-  position:fixed;inset:0;
-  background:rgba(0,0,0,0.6);
+#loading{{
+  position:absolute;inset:0;border-radius:inherit;
+  background:rgba(0,0,0,0.5);
   display:flex;align-items:center;justify-content:center;
-  opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:50;
+  opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:40;
 }}
-#loading-overlay.show{{opacity:1;}}
-.loading-ring{{
-  width:24px;height:24px;
+#loading.show{{opacity:1;}}
+.ring{{
+  width:22px;height:22px;
   border:1.5px solid rgba(255,255,255,0.15);
-  border-top-color:rgba(255,255,255,0.8);
-  border-radius:50%;
-  animation:spin 0.8s linear infinite;
+  border-top-color:#fff;border-radius:50%;
+  animation:spin 0.7s linear infinite;
 }}
 @keyframes spin{{to{{transform:rotate(360deg);}}}}
 
-/* 顶部：极简状态 */
-#hud-top{{
-  position:fixed;top:0;left:0;right:0;
-  padding:max(14px,env(safe-area-inset-top)) 20px 10px;
+/* 顶部极简 HUD */
+#hud{{
+  position:absolute;top:0;left:0;right:0;
+  padding:12px 16px 8px;
   display:flex;align-items:center;justify-content:space-between;
   z-index:10;
-  background:linear-gradient(to bottom,rgba(0,0,0,0.4) 0%,transparent 100%);
+  background:linear-gradient(to bottom,rgba(0,0,0,0.35),transparent);
+  pointer-events:none;
 }}
-#live-indicator{{
+#live-dot{{
   width:6px;height:6px;border-radius:50%;
-  background:rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.2);
+  transition:background 0.3s;
 }}
-#live-indicator.on{{
-  background:#ff3b30;
-  box-shadow:0 0 6px #ff3b30;
-}}
-#ev-readout{{
-  font-size:11px;font-weight:400;
-  letter-spacing:0.08em;
-  color:rgba(255,255,255,0);
-  opacity:0;transition:opacity 0.3s;
-  font-variant-numeric:tabular-nums;
-}}
-#ev-readout.show{{opacity:0.8;}}
-#lut-readout{{
-  font-size:10px;font-weight:300;
-  letter-spacing:0.12em;
-  color:rgba(255,255,255,0.45);
-  text-transform:uppercase;
-  max-width:120px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  text-align:right;
+#live-dot.on{{background:#ff3b30;box-shadow:0 0 5px #ff3b30;}}
+#lut-name{{
+  font-size:10px;font-weight:300;letter-spacing:0.14em;
+  color:rgba(255,255,255,0.45);text-transform:uppercase;
+  max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }}
 
-/* 曝光滑条（右侧竖向） */
-#ev-bar{{
-  position:fixed;right:0;top:50%;
-  transform:translateY(-50%);
-  z-index:10;
-  padding:20px 14px;
-  opacity:0;pointer-events:none;
-  transition:opacity 0.2s;
-  display:flex;flex-direction:column;align-items:center;gap:10px;
+/* 对焦框 + 曝光调节（合并组件） */
+#focus-group{{
+  position:absolute;
+  pointer-events:none;
+  z-index:20;
+  opacity:0;transition:opacity 0.15s;
+  transform:translate(-50%,-50%);
 }}
-#ev-bar.show{{opacity:1;pointer-events:all;}}
-#ev-slider{{
-  writing-mode:vertical-lr;direction:rtl;
-  -webkit-appearance:none;appearance:none;
-  width:2px;height:120px;
-  background:rgba(255,255,255,0.15);
-  outline:none;border-radius:1px;
+#focus-group.show{{opacity:1;pointer-events:all;}}
+
+#focus-ring{{
+  width:64px;height:64px;
+  border:1.5px solid rgba(255,200,60,0.9);
+  border-radius:4px;
+  position:relative;
 }}
-#ev-slider::-webkit-slider-thumb{{
-  -webkit-appearance:none;
-  width:18px;height:18px;border-radius:50%;
-  background:#fff;cursor:pointer;border:none;
-  box-shadow:0 1px 4px rgba(0,0,0,0.5);
+/* 四角高亮 */
+#focus-ring::before,#focus-ring::after{{
+  content:'';position:absolute;
+  width:10px;height:10px;
+  border-color:rgba(255,200,60,1);border-style:solid;
 }}
-.ev-mark{{
-  font-size:9px;letter-spacing:0.05em;
-  color:rgba(255,255,255,0.3);
-  font-variant-numeric:tabular-nums;
+#focus-ring::before{{top:-1px;left:-1px;border-width:2px 0 0 2px;}}
+#focus-ring::after{{bottom:-1px;right:-1px;border-width:0 2px 2px 0;}}
+
+/* 曝光调节手柄 */
+#ev-handle{{
+  position:absolute;
+  left:calc(100% + 12px);
+  top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;gap:6px;
+  cursor:ns-resize;
+  white-space:nowrap;
+}}
+#ev-sun{{
+  width:22px;height:22px;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(255,200,60,0.7);
+  border-radius:50%;
+  color:rgba(255,200,60,0.9);
+  font-size:11px;
+}}
+#ev-value-badge{{
+  font-size:10px;font-weight:500;
+  color:rgba(255,200,60,0.9);
+  letter-spacing:0.05em;
+  min-width:30px;
 }}
 
-/* LUT 条带 */
+/* LUT 条 */
 #lut-strip-wrap{{
-  position:fixed;
-  bottom:calc(110px + env(safe-area-inset-bottom,0px));
-  left:0;right:0;z-index:10;
-  padding:0 16px;
+  position:absolute;
+  bottom:0;left:0;right:0;
+  height:158px;
+  background:#0a0a0a;
+  display:flex;flex-direction:column;
+  justify-content:flex-start;
+  padding-top:8px;
 }}
 #lut-strip{{
-  display:flex;gap:6px;
-  overflow-x:auto;padding:6px 0;
+  display:flex;gap:5px;
+  overflow-x:auto;padding:4px 14px;
   scrollbar-width:none;-webkit-overflow-scrolling:touch;
+  flex-shrink:0;
 }}
 #lut-strip::-webkit-scrollbar{{display:none;}}
 .lut-pill{{
   flex-shrink:0;
-  padding:4px 12px;border-radius:2px;
-  font-size:10px;font-weight:400;
-  letter-spacing:0.1em;text-transform:uppercase;
-  color:rgba(255,255,255,0.35);
-  background:rgba(0,0,0,0.3);
-  border:1px solid rgba(255,255,255,0.08);
+  padding:4px 11px;border-radius:3px;
+  font-size:9px;font-weight:400;letter-spacing:0.12em;
+  color:rgba(255,255,255,0.3);
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.07);
   cursor:pointer;transition:all 0.12s;white-space:nowrap;
+  text-transform:uppercase;
   -webkit-user-select:none;
-  backdrop-filter:blur(6px);
-  -webkit-backdrop-filter:blur(6px);
 }}
 .lut-pill.active{{
-  color:rgba(255,255,255,0.9);
-  border-color:rgba(255,255,255,0.5);
+  color:rgba(255,255,255,0.85);
+  border-color:rgba(255,255,255,0.35);
+  background:rgba(255,255,255,0.07);
+}}
+
+/* 控制行 */
+#ctrl-row{{
+  flex:1;
+  display:flex;align-items:center;
+  justify-content:space-between;
+  padding:0 28px;
+}}
+
+/* 焦距按钮 */
+#zoom-btns{{display:flex;gap:3px;align-items:center;}}
+.zoom-btn{{
+  background:transparent;border:none;
+  color:rgba(255,255,255,0.35);
+  font-size:11px;font-weight:400;letter-spacing:0.04em;
+  padding:5px 9px;cursor:pointer;border-radius:3px;
+  transition:all 0.15s;
+}}
+.zoom-btn.active{{
+  color:rgba(255,255,255,0.85);
   background:rgba(255,255,255,0.08);
 }}
 
-/* 底部控制 */
-#controls{{
-  position:fixed;bottom:0;left:0;right:0;
-  padding:0 32px;
-  padding-bottom:max(24px,env(safe-area-inset-bottom));
-  height:calc(110px + env(safe-area-inset-bottom,0px));
-  display:flex;align-items:center;justify-content:space-between;
-  z-index:10;
-  background:linear-gradient(to top,rgba(0,0,0,0.45) 0%,transparent 100%);
-}}
-
-/* 缩放 */
-#zoom-btns{{display:flex;flex-direction:column;gap:4px;align-items:center;}}
-.zoom-btn{{
-  background:transparent;border:none;
-  color:rgba(255,255,255,0.4);
-  font-size:11px;font-weight:400;
-  letter-spacing:0.06em;
-  padding:4px 8px;cursor:pointer;
-  border-radius:2px;
-  transition:all 0.15s;
-  font-variant-numeric:tabular-nums;
-}}
-.zoom-btn.active{{
-  color:rgba(255,255,255,0.9);
-  background:rgba(255,255,255,0.1);
-}}
-
-/* EV 按钮 */
-#ev-btn{{
-  background:transparent;border:none;
-  width:36px;height:36px;
-  display:flex;align-items:center;justify-content:center;
-  cursor:pointer;border-radius:50%;transition:all 0.15s;
-}}
-#ev-btn.active svg{{ stroke:rgba(255,255,255,0.9) !important; }}
-#ev-btn:active{{background:rgba(255,255,255,0.1);}}
-
-/* 翻转按钮 */
+/* 翻转 */
 #flip-btn{{
   background:transparent;border:none;
-  width:36px;height:36px;
+  width:34px;height:34px;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;border-radius:50%;
-  transition:all 0.15s;
+  transition:transform 0.4s;
+  color:rgba(255,255,255,0.5);
 }}
-#flip-btn:active{{background:rgba(255,255,255,0.1);transform:rotate(180deg);}}
+#flip-btn:active{{transform:rotate(180deg);}}
 
 /* 快门 */
 #shutter{{
-  width:68px;height:68px;
-  border-radius:50%;
-  border:2px solid rgba(255,255,255,0.85);
-  background:transparent;
+  width:66px;height:66px;border-radius:50%;
+  border:2.5px solid rgba(255,255,255,0.85);
+  background:transparent;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer;
-  transition:transform 0.08s;
-  flex-shrink:0;
+  transition:transform 0.08s;flex-shrink:0;
 }}
-#shutter:active{{transform:scale(0.93);}}
+#shutter:active{{transform:scale(0.92);}}
 #shutter-inner{{
-  width:54px;height:54px;
-  border-radius:50%;
-  background:rgba(255,255,255,0.88);
+  width:52px;height:52px;border-radius:50%;
+  background:rgba(255,255,255,0.87);
   transition:background 0.08s;
 }}
-#shutter:active #shutter-inner{{background:rgba(255,255,255,0.5);}}
+#shutter:active #shutter-inner{{background:rgba(255,255,255,0.45);}}
 </style>
 </head>
 <body>
-<div id="viewer"><canvas id="c"></canvas></div>
-<div id="flash"></div>
-<div id="focus-box"></div>
-<div id="loading-overlay"><div class="loading-ring"></div></div>
 
-<div id="hud-top">
-  <div id="live-indicator"></div>
-  <div id="ev-readout">EV +0.0</div>
-  <div id="lut-readout">—</div>
-</div>
-
-<div id="ev-bar">
-  <span class="ev-mark">+2</span>
-  <input type="range" id="ev-slider" min="-2" max="2" step="0.1" value="0">
-  <span class="ev-mark">-2</span>
+<div id="viewer">
+  <canvas id="c"></canvas>
+  <div id="flash"></div>
+  <div id="loading"><div class="ring"></div></div>
+  <div id="hud">
+    <div id="live-dot"></div>
+    <div id="lut-name">—</div>
+  </div>
+  <!-- 对焦 + 曝光组合 -->
+  <div id="focus-group">
+    <div id="focus-ring"></div>
+    <div id="ev-handle">
+      <div id="ev-sun">☀</div>
+      <div id="ev-value-badge"></div>
+    </div>
+  </div>
 </div>
 
 <div id="lut-strip-wrap">
   <div id="lut-strip"></div>
-</div>
-
-<div id="controls">
-  <div id="zoom-btns"></div>
-  <button id="shutter"><div id="shutter-inner"></div></button>
-  <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
-    <button id="flip-btn" title="Flip camera">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <div id="ctrl-row">
+    <div id="zoom-btns"></div>
+    <button id="shutter"><div id="shutter-inner"></div></button>
+    <button id="flip-btn">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
         <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
-      </svg>
-    </button>
-    <button id="ev-btn" title="Exposure">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round">
-        <circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/>
-        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-        <line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/>
-        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
       </svg>
     </button>
   </div>
@@ -464,24 +446,22 @@ canvas{{width:100%;height:100%;object-fit:cover;display:block;}}
 const LUT_NAMES = {lut_names_js};
 const LUT_BASE  = "{lut_base_url}";
 const LUT_CACHE = {{}};
-let currentName = LUT_NAMES[0] || '';
-let evValue = 0, zoomValue = 1, evVisible = false;
+let currentName = LUT_NAMES[0]||'';
+let evValue=0, zoomValue=1;
+let facingMode='environment';
 
 // WebGL
-const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl2', {{preserveDrawingBuffer:true}});
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl2',{{preserveDrawingBuffer:true}});
 
-const VS = `#version 300 es
-in vec2 aPos; out vec2 vUV;
-void main(){{
-  vUV = vec2(aPos.x*0.5+0.5, 0.5-aPos.y*0.5);
-  gl_Position = vec4(aPos,0,1);
-}}`;
-const FS = `#version 300 es
-precision highp float; precision highp sampler3D;
-uniform sampler2D uVideo; uniform sampler3D uLUT;
+const VS=`#version 300 es
+in vec2 aPos;out vec2 vUV;
+void main(){{vUV=vec2(aPos.x*.5+.5,.5-aPos.y*.5);gl_Position=vec4(aPos,0,1);}}`;
+const FS=`#version 300 es
+precision highp float;precision highp sampler3D;
+uniform sampler2D uVideo;uniform sampler3D uLUT;
 uniform float uSize,uEV,uZoom;
-in vec2 vUV; out vec4 fragColor;
+in vec2 vUV;out vec4 fragColor;
 vec3 toL(vec3 c){{return mix(c/12.92,pow((c+.055)/1.055,vec3(2.4)),step(.04045,c));}}
 vec3 toS(vec3 c){{c=clamp(c,0.,1.);return mix(c*12.92,1.055*pow(c,vec3(1./2.4))-.055,step(.0031308,c));}}
 void main(){{
@@ -496,7 +476,7 @@ function mkS(t,s){{const sh=gl.createShader(t);gl.shaderSource(sh,s);gl.compileS
 const prog=gl.createProgram();
 gl.attachShader(prog,mkS(gl.VERTEX_SHADER,VS));
 gl.attachShader(prog,mkS(gl.FRAGMENT_SHADER,FS));
-gl.linkProgram(prog); gl.useProgram(prog);
+gl.linkProgram(prog);gl.useProgram(prog);
 
 const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
 gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
@@ -551,12 +531,12 @@ function uploadLUT(size,floatData){{
   gl.uniform1f(uSize,size);
 }}
 
-const overlay=document.getElementById('loading-overlay');
-const lutReadout=document.getElementById('lut-readout');
+const loading=document.getElementById('loading');
+const lutName=document.getElementById('lut-name');
 
 async function switchLUT(name){{
   if(name===currentName&&LUT_CACHE[name])return;
-  overlay.classList.add('show');
+  loading.classList.add('show');
   document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===name));
   try{{
     if(!LUT_CACHE[name]){{
@@ -566,15 +546,14 @@ async function switchLUT(name){{
     }}
     const {{size,data}}=LUT_CACHE[name];
     if(!data||!data.length)throw new Error('empty');
-    uploadLUT(size,data);
-    currentName=name;
-    lutReadout.textContent=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
+    uploadLUT(size,data);currentName=name;
+    lutName.textContent=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
     document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===name));
   }}catch(e){{
     console.error(e);
     document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===currentName));
   }}
-  finally{{overlay.classList.remove('show');}}
+  finally{{loading.classList.remove('show');}}
 }}
 
 // LUT 条带
@@ -591,21 +570,27 @@ LUT_NAMES.forEach(name=>{{
 // 摄像头
 const video=document.createElement('video');
 video.autoplay=true;video.playsInline=true;video.muted=true;
-const liveIndicator=document.getElementById('live-indicator');
+const liveDot=document.getElementById('live-dot');
+let stream=null;
 
-navigator.mediaDevices.getUserMedia({{
-  video:{{facingMode:'environment',width:{{ideal:1920}},height:{{ideal:1080}}}},audio:false
-}}).then(stream=>{{
-  video.srcObject=stream;video.play();
-  liveIndicator.classList.add('on');
-  video.addEventListener('loadedmetadata',()=>{{
-    canvas.width=video.videoWidth;canvas.height=video.videoHeight;
-    gl.viewport(0,0,canvas.width,canvas.height);
-    uploadIdentityLUT();
-    requestAnimationFrame(render);
-    switchLUT(LUT_NAMES[0]);
-  }});
-}}).catch(()=>{{liveIndicator.style.background='#555';}});
+async function startCamera(){{
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  try{{
+    stream=await navigator.mediaDevices.getUserMedia({{
+      video:{{facingMode,width:{{ideal:1920}},height:{{ideal:1080}}}},audio:false
+    }});
+    video.srcObject=stream;video.play();
+    liveDot.classList.add('on');
+    video.addEventListener('loadedmetadata',()=>{{
+      canvas.width=video.videoWidth;canvas.height=video.videoHeight;
+      gl.viewport(0,0,canvas.width,canvas.height);
+      uploadIdentityLUT();
+      requestAnimationFrame(render);
+      switchLUT(LUT_NAMES[0]);
+    }},{{once:true}});
+  }}catch(e){{liveDot.style.background='#555';}}
+}}
+startCamera();
 
 function render(){{
   if(video.readyState>=2){{
@@ -616,24 +601,58 @@ function render(){{
   requestAnimationFrame(render);
 }}
 
-// 点击对焦
-const focusBox=document.getElementById('focus-box');
+// ── 对焦 + 曝光 合并交互 ──
+const focusGroup=document.getElementById('focus-group');
+const evHandle=document.getElementById('ev-handle');
+const evSun=document.getElementById('ev-sun');
+const evBadge=document.getElementById('ev-value-badge');
+let focusTimer=null;
+let dragging=false;
+let dragStartY=0;
+let dragStartEV=0;
+
+// 点击取景器：显示对焦框
 document.getElementById('viewer').addEventListener('pointerdown',e=>{{
-  if(e.target!==canvas)return;
-  focusBox.style.left=e.clientX+'px';focusBox.style.top=e.clientY+'px';
-  focusBox.classList.add('show');
-  clearTimeout(focusBox._t);
-  focusBox._t=setTimeout(()=>focusBox.classList.remove('show'),1000);
+  if(e.target===evSun||e.target===evHandle||e.target.closest('#ev-handle'))return;
+  const x=e.clientX,y=e.clientY;
+  focusGroup.style.left=x+'px';
+  focusGroup.style.top=y+'px';
+  focusGroup.classList.add('show');
+  clearTimeout(focusTimer);
+  focusTimer=setTimeout(()=>{{
+    if(!dragging)focusGroup.classList.remove('show');
+  }},3000);
 }});
 
-// 缩放
-const zoomLevels=[{{label:'28mm',zoom:1}},{{label:'35mm',zoom:1.25}},{{label:'50mm',zoom:1.8}}];
+// 拖动太阳图标调曝光
+evSun.addEventListener('pointerdown',e=>{{
+  e.preventDefault();e.stopPropagation();
+  dragging=true;
+  dragStartY=e.clientY;
+  dragStartEV=evValue;
+  evSun.setPointerCapture(e.pointerId);
+}});
+evSun.addEventListener('pointermove',e=>{{
+  if(!dragging)return;
+  const delta=(dragStartY-e.clientY)/80;
+  evValue=Math.max(-2,Math.min(2,dragStartEV+delta));
+  gl.uniform1f(uEV,evValue);
+  const s=evValue>=0?'+':'';
+  evBadge.textContent=s+evValue.toFixed(1);
+  clearTimeout(focusTimer);
+}});
+evSun.addEventListener('pointerup',e=>{{
+  dragging=false;
+  focusTimer=setTimeout(()=>focusGroup.classList.remove('show'),2000);
+}});
+
+// 焦距
+const zoomDefs=[{{label:'28mm',zoom:1}},{{label:'35mm',zoom:1.25}},{{label:'50mm',zoom:1.8}}];
 const zoomBtns=document.getElementById('zoom-btns');
-zoomLevels.forEach((z,i)=>{{
+zoomDefs.forEach((z,i)=>{{
   const btn=document.createElement('button');
   btn.className='zoom-btn'+(i===0?' active':'');
-  btn.textContent=z.label;
-  btn.dataset.zoom=z.zoom;
+  btn.textContent=z.label;btn.dataset.zoom=z.zoom;
   btn.addEventListener('pointerdown',e=>{{
     e.preventDefault();zoomValue=z.zoom;gl.uniform1f(uZoom,z.zoom);
     document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.toggle('active',b.dataset.zoom==z.zoom));
@@ -654,43 +673,11 @@ document.getElementById('viewer').addEventListener('touchmove',e=>{{
   }}
 }},{{passive:true}});
 
-// 曝光
-const evBar=document.getElementById('ev-bar');
-const evBtn=document.getElementById('ev-btn');
-const evSlider=document.getElementById('ev-slider');
-const evReadout=document.getElementById('ev-readout');
-
-evBtn.addEventListener('pointerdown',e=>{{
-  e.preventDefault();e.stopPropagation();
-  evVisible=!evVisible;
-  evBar.classList.toggle('show',evVisible);
-  evBtn.classList.toggle('active',evVisible);
-}});
-evSlider.addEventListener('input',e=>{{
-  evValue=parseFloat(e.target.value);
-  gl.uniform1f(uEV,evValue);
-  const s=evValue>=0?'+':'';
-  evReadout.textContent='EV '+s+evValue.toFixed(1);
-  evReadout.classList.add('show');
-  clearTimeout(evReadout._t);
-  evReadout._t=setTimeout(()=>evReadout.classList.remove('show'),2000);
-}});
-
-// 翻转摄像头
-let facingMode = 'environment';
-document.getElementById('flip-btn').addEventListener('pointerdown', async e => {{
+// 翻转
+document.getElementById('flip-btn').addEventListener('pointerdown',async e=>{{
   e.preventDefault();
-  facingMode = facingMode === 'environment' ? 'user' : 'environment';
-  if(video.srcObject) {{
-    video.srcObject.getTracks().forEach(t => t.stop());
-  }}
-  try {{
-    const stream = await navigator.mediaDevices.getUserMedia({{
-      video:{{facingMode,width:{{ideal:1920}},height:{{ideal:1080}}}},audio:false
-    }});
-    video.srcObject = stream;
-    video.play();
-  }} catch(e) {{ console.error(e); }}
+  facingMode=facingMode==='environment'?'user':'environment';
+  await startCamera();
 }});
 
 // 快门
