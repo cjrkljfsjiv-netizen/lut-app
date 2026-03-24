@@ -294,9 +294,9 @@ const LUT_NAMES = {lut_names_js};
 const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
 
-// LUT 文件路径：尝试多个可能的 base URL
+// LUT base URL
 function getLUTBase() {
-  // 从 iframe 找父页面 origin
+  // try parent origin
   try {
     if (window.parent && window.parent.location.origin) {
       return window.parent.location.origin + '/app/static/luts';
@@ -370,7 +370,7 @@ function parseCube(text){{
   return {{size,data:new Float32Array(data)}};
 }}
 
-// Identity LUT：直通，不改变颜色，作为默认值
+// Identity LUT: passthrough, no color change
 function uploadIdentityLUT() {
   const size = 2;
   const n = size*size*size;
@@ -444,9 +444,9 @@ navigator.mediaDevices.getUserMedia({{
   video.addEventListener('loadedmetadata',()=>{{
     canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     gl.viewport(0,0,canvas.width,canvas.height);
-    uploadIdentityLUT();       // 先显示原始画面
+    uploadIdentityLUT();
     requestAnimationFrame(render);
-    switchLUT(LUT_NAMES[0]);   // 异步加载真实 LUT
+    switchLUT(LUT_NAMES[0]);
   }});
 }}).catch(()=>{{liveTag.textContent='NO CAM';}});
 
