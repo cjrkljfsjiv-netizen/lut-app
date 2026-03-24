@@ -197,7 +197,7 @@ else:
 # 本地：/app/static/luts/xxx.cube
 # ══════════════════════════════════════
 
-def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 720):
+def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 820):
     lut_names_js = json.dumps(lut_names)
 
     html = f"""
@@ -206,107 +206,368 @@ def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
   * {{ margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }}
-  body {{
-    background:#0c0c0b; font-family:'DM Mono',monospace;
-    height:100svh; display:flex; flex-direction:column;
-    overflow:hidden; user-select:none;
-  }}
-  #viewer {{ flex:1; position:relative; overflow:hidden; background:#000; min-height:0; }}
-  canvas {{ width:100%; height:100%; object-fit:cover; display:block; }}
-  #ev-display {{
-    position:absolute; top:0.8rem; right:0.8rem;
-    font-size:0.58rem; letter-spacing:0.2em;
-    color:rgba(255,255,255,0.55); background:rgba(0,0,0,0.35);
-    padding:0.18rem 0.5rem; border-radius:2px;
-  }}
-  #loading-overlay {{
-    position:absolute; inset:0; background:rgba(12,12,11,0.8);
-    display:flex; align-items:center; justify-content:center;
-    font-size:0.55rem; letter-spacing:0.3em; color:#a87d45;
-    text-transform:uppercase; opacity:0; pointer-events:none; transition:opacity 0.2s;
-  }}
-  #loading-overlay.show {{ opacity:1; }}
-  #flash {{ position:absolute; inset:0; background:white; opacity:0; pointer-events:none; transition:opacity 0.04s; }}
-  #flash.go {{ opacity:0.65; }}
 
-  #controls {{ background:#0c0c0b; flex-shrink:0; padding:0 1rem; }}
+  body {{
+    background:#000;
+    font-family: -apple-system, 'SF Pro Text', sans-serif;
+    height: 100svh;
+    overflow: hidden;
+    user-select: none;
+    color: #fff;
+  }}
+
+  /* ── 全屏取景器 ── */
+  #viewer {{
+    position: fixed;
+    inset: 0;
+    background: #000;
+  }}
+  canvas {{
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }}
+
+  /* ── 闪光 ── */
+  #flash {{
+    position: fixed; inset: 0;
+    background: #fff; opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.04s;
+    z-index: 100;
+  }}
+  #flash.go {{ opacity: 0.8; }}
+
+  /* ── 顶部 HUD ── */
+  #hud-top {{
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    padding: env(safe-area-inset-top, 12px) 20px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 10;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.5), transparent);
+  }}
+  .hud-pill {{
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: rgba(255,255,255,0.85);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }}
+  .hud-pill.live {{ color: #f0c040; }}
+  .hud-dot {{
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #f0c040;
+    animation: pulse 1.5s ease-in-out infinite;
+  }}
+  @keyframes pulse {{ 0%,100% {{ opacity:1; }} 50% {{ opacity:0.3; }} }}
+
+  /* 曝光指示 */
+  #ev-hud {{
+    font-size: 13px;
+    font-weight: 600;
+    color: #f0c040;
+    opacity: 0;
+    transition: opacity 0.3s;
+    min-width: 60px;
+    text-align: center;
+  }}
+  #ev-hud.show {{ opacity: 1; }}
+
+  /* 当前 LUT 名 */
+  #lut-hud {{
+    font-size: 11px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }}
+
+  /* ── 对焦框 ── */
+  #focus-box {{
+    position: fixed;
+    width: 72px; height: 72px;
+    border: 1.5px solid #f0c040;
+    border-radius: 4px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+    transition: opacity 0.2s;
+    transform: translate(-50%, -50%);
+  }}
+  #focus-box::before, #focus-box::after {{
+    content: '';
+    position: absolute;
+    background: #f0c040;
+  }}
+  #focus-box::before {{ top: -6px; left: 50%; width: 1px; height: 12px; transform: translateX(-50%); }}
+  #focus-box::after  {{ left: -6px; top: 50%; height: 1px; width: 12px; transform: translateY(-50%); }}
+  #focus-box.show {{ opacity: 1; }}
+
+  /* ── 曝光滑条（点击后弹出） ── */
+  #ev-bar {{
+    position: fixed;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }}
+  #ev-bar.show {{ opacity: 1; pointer-events: all; }}
+  .ev-icon {{ font-size: 16px; }}
+  #ev-slider {{
+    writing-mode: vertical-lr;
+    direction: rtl;
+    -webkit-appearance: none;
+    appearance: none;
+    width: 4px;
+    height: 140px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 2px;
+    outline: none;
+  }}
+  #ev-slider::-webkit-slider-thumb {{
+    -webkit-appearance: none;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: #f0c040;
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }}
+
+  /* ── LUT 选择条 ── */
+  #lut-strip-wrap {{
+    position: fixed;
+    bottom: calc(140px + env(safe-area-inset-bottom, 0px));
+    left: 0; right: 0;
+    z-index: 10;
+    padding: 0 16px;
+    opacity: 1;
+    transition: opacity 0.2s;
+  }}
   #lut-strip {{
-    display:flex; gap:0.4rem; overflow-x:auto; padding:0.7rem 0 0.55rem;
-    scrollbar-width:none; -webkit-overflow-scrolling:touch;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 8px 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
   }}
-  #lut-strip::-webkit-scrollbar {{ display:none; }}
+  #lut-strip::-webkit-scrollbar {{ display: none; }}
+
   .lut-pill {{
-    flex-shrink:0; font-size:0.48rem; letter-spacing:0.1em;
-    text-transform:uppercase; color:#383836;
-    padding:0.25rem 0.7rem; border:1px solid #1c1c1a; border-radius:999px;
-    cursor:pointer; transition:all 0.12s; white-space:nowrap;
-    -webkit-user-select:none; user-select:none;
+    flex-shrink: 0;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    color: rgba(255,255,255,0.55);
+    background: rgba(0,0,0,0.35);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.12);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    -webkit-user-select: none;
   }}
-  .lut-pill.active {{ color:#a87d45; border-color:#a87d45; background:rgba(168,125,69,0.1); }}
-  .divider {{ height:1px; background:#181817; margin:0 -1rem; }}
-  #sliders {{ display:flex; align-items:center; gap:1rem; padding:0.6rem 0; }}
-  .sg {{ display:flex; align-items:center; gap:0.5rem; flex:1; }}
-  .sl {{ font-size:0.44rem; letter-spacing:0.2em; color:#252523; text-transform:uppercase; white-space:nowrap; }}
-  input[type=range] {{
-    flex:1; -webkit-appearance:none; appearance:none;
-    height:1px; background:#1e1e1c; outline:none;
+  .lut-pill.active {{
+    color: #000;
+    background: #f0c040;
+    border-color: #f0c040;
+    font-weight: 600;
   }}
-  input[type=range]::-webkit-slider-thumb {{
-    -webkit-appearance:none; width:16px; height:16px;
-    border-radius:50%; background:#a87d45; cursor:pointer; border:none;
+  .lut-pill.loading {{
+    opacity: 0.4;
   }}
+
+  /* Loading overlay */
+  #loading-overlay {{
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; letter-spacing: 0.1em; color: rgba(255,255,255,0.7);
+    text-transform: uppercase;
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.2s;
+    z-index: 50;
+  }}
+  #loading-overlay.show {{ opacity: 1; }}
+
+  /* ── 底部控制栏 ── */
+  #controls {{
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    height: calc(130px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    z-index: 10;
+  }}
+
   #shutter-row {{
-    display:flex; align-items:center; justify-content:center;
-    padding:0.5rem 0 max(0.8rem, env(safe-area-inset-bottom));
-    position:relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 40px;
+    gap: 0;
+    position: relative;
   }}
-  #live-tag {{ position:absolute; left:0; font-size:0.44rem; letter-spacing:0.28em; color:#252523; text-transform:uppercase; }}
-  #live-tag.on {{ color:#a87d45; }}
-  #lut-label {{ position:absolute; right:0; font-size:0.44rem; letter-spacing:0.1em; color:#252523; text-transform:uppercase; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }}
+
+  /* 缩放显示 */
+  #zoom-display {{
+    position: absolute;
+    left: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }}
+  .zoom-btn {{
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 999px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }}
+  .zoom-btn.active {{
+    background: rgba(240,192,64,0.9);
+    color: #000;
+    border-color: #f0c040;
+  }}
+
+  /* EV 按钮 */
+  #ev-btn {{
+    position: absolute;
+    right: 40px;
+    background: rgba(0,0,0,0.4);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 999px;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 6px 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }}
+  #ev-btn.active {{ border-color: #f0c040; color: #f0c040; }}
+
+  /* 快门按钮 */
   #shutter {{
-    width:58px; height:58px; min-width:58px; min-height:58px;
-    border-radius:50%; border:2px solid #a87d45; background:transparent;
-    cursor:pointer; display:flex; align-items:center; justify-content:center;
-    transition:transform 0.1s; flex-shrink:0;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    background: transparent;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.1s;
+    flex-shrink: 0;
   }}
-  #shutter:active {{ transform:scale(0.91); }}
-  #shutter-inner {{ width:44px; height:44px; min-width:44px; min-height:44px; border-radius:50%; background:#a87d45; flex-shrink:0; }}
+  #shutter:active {{ transform: scale(0.92); }}
+  #shutter-inner {{
+    width: 58px; height: 58px;
+    border-radius: 50%;
+    background: #fff;
+    transition: background 0.1s;
+  }}
+  #shutter:active #shutter-inner {{ background: rgba(255,255,255,0.7); }}
 </style>
 </head>
 <body>
-<div id="viewer">
-  <canvas id="c"></canvas>
-  <div id="ev-display">EV +0.0</div>
-  <div id="loading-overlay">Loading LUT...</div>
-  <div id="flash"></div>
-</div>
-<div id="controls">
-  <div id="lut-strip"></div>
-  <div class="divider"></div>
-  <div id="sliders">
-    <div class="sg"><span class="sl">EV</span><input type="range" id="ev-slider" min="-2" max="2" step="0.1" value="0"></div>
-    <div class="sg"><span class="sl">ZOOM</span><input type="range" id="zoom-slider" min="1" max="4" step="0.1" value="1"></div>
+
+<div id="viewer"><canvas id="c"></canvas></div>
+<div id="flash"></div>
+<div id="focus-box"></div>
+<div id="loading-overlay">Loading...</div>
+
+<!-- 顶部 HUD -->
+<div id="hud-top">
+  <div class="hud-pill" id="live-tag">
+    <div class="hud-dot"></div>
+    <span>—</span>
   </div>
-  <div class="divider"></div>
+  <div id="ev-hud">EV +0.0</div>
+  <div id="lut-hud">—</div>
+</div>
+
+<!-- 右侧曝光滑条 -->
+<div id="ev-bar">
+  <span class="ev-icon">☀️</span>
+  <input type="range" id="ev-slider" min="-2" max="2" step="0.1" value="0">
+  <span class="ev-icon">🌑</span>
+</div>
+
+<!-- LUT 条带 -->
+<div id="lut-strip-wrap">
+  <div id="lut-strip"></div>
+</div>
+
+<!-- 底部控制 -->
+<div id="controls">
   <div id="shutter-row">
-    <div id="live-tag">—</div>
+    <div id="zoom-display">
+      <button class="zoom-btn active" data-zoom="1">1×</button>
+    </div>
     <button id="shutter"><div id="shutter-inner"></div></button>
-    <div id="lut-label">—</div>
+    <button id="ev-btn">
+      <span>±</span>
+      <span id="ev-label">0.0</span>
+    </button>
   </div>
 </div>
 
 <script>
 const LUT_NAMES = {lut_names_js};
+const LUT_BASE  = "{lut_base_url}";
 const LUT_CACHE = {{}};
 let currentName = LUT_NAMES[0] || '';
-
-const LUT_BASE = "{lut_base_url}";
+let evValue = 0;
+let zoomValue = 1;
+let evBarVisible = false;
 
 // ── WebGL
 const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl2', {{ preserveDrawingBuffer: true }});
+const gl = canvas.getContext('webgl2', {{ preserveDrawingBuffer: true, antialias: false }});
 
 const VS = `#version 300 es
 in vec2 aPos; out vec2 vUV;
@@ -355,35 +616,29 @@ gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
 [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T,gl.TEXTURE_WRAP_R].forEach(p=>gl.texParameteri(gl.TEXTURE_3D,p,gl.CLAMP_TO_EDGE));
 gl.uniform1i(uLUT,1);
 
+// Identity LUT fallback
+function uploadIdentityLUT() {{
+  const size=2, n=8, rgba=new Uint8Array(n*4);
+  let i=0;
+  for(let b=0;b<size;b++) for(let g=0;g<size;g++) for(let r=0;r<size;r++) {{
+    rgba[i*4]=r*255; rgba[i*4+1]=g*255; rgba[i*4+2]=b*255; rgba[i*4+3]=255; i++;
+  }}
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
+  gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA,2,2,2,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
+  gl.uniform1f(uSize,2);
+}}
+
 function parseCube(text){{
   let size=33,data=[];
-  for(const raw of text.split('\\n')){{
+  for(const raw of text.split('\n')){{
     const line=raw.trim();
     if(!line||line.startsWith('#')) continue;
-    if(line.startsWith('LUT_3D_SIZE')){{size=parseInt(line.split(/\\s+/)[1]);continue;}}
+    if(line.startsWith('LUT_3D_SIZE')){{size=parseInt(line.split(/\s+/)[1]);continue;}}
     if(/^[A-Z_]/.test(line)) continue;
-    const p=line.split(/\\s+/),nums=p.map(Number);
+    const p=line.split(/\s+/),nums=p.map(Number);
     if(p.length===3&&nums.every(n=>!isNaN(n))) data.push(...nums);
   }}
   return {{size,data:new Float32Array(data)}};
-}}
-
-// Identity LUT: passthrough, no color change
-function uploadIdentityLUT() {{
-  const size = 2;
-  const n = size*size*size;
-  const rgba = new Uint8Array(n*4);
-  let i = 0;
-  for(let b=0;b<size;b++) for(let g=0;g<size;g++) for(let r=0;r<size;r++) {{
-    rgba[i*4]   = r * 255;
-    rgba[i*4+1] = g * 255;
-    rgba[i*4+2] = b * 255;
-    rgba[i*4+3] = 255;
-    i++;
-  }}
-  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D,lTex);
-  gl.texImage3D(gl.TEXTURE_3D,0,gl.RGBA,size,size,size,0,gl.RGBA,gl.UNSIGNED_BYTE,rgba);
-  gl.uniform1f(uSize,size);
 }}
 
 function uploadLUT(size,floatData){{
@@ -399,35 +654,39 @@ function uploadLUT(size,floatData){{
   gl.uniform1f(uSize,size);
 }}
 
-const overlay=document.getElementById('loading-overlay');
-const lutLabel=document.getElementById('lut-label');
+const overlay  = document.getElementById('loading-overlay');
+const lutHud   = document.getElementById('lut-hud');
+const liveTag  = document.getElementById('live-tag').querySelector('span');
 
 async function switchLUT(name){{
   if(name===currentName&&LUT_CACHE[name]) return;
   overlay.classList.add('show');
-  document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===name));
+  document.querySelectorAll('.lut-pill').forEach(p=>{{
+    p.classList.toggle('active', p.dataset.name===name);
+    p.classList.toggle('loading', p.dataset.name===name&&!LUT_CACHE[name]);
+  }});
   try{{
     if(!LUT_CACHE[name]){{
       const url=`${{LUT_BASE}}/${{encodeURIComponent(name)}}.cube`;
-      console.log('Fetching LUT:', url);
       const r=await fetch(url);
-      if(!r.ok) throw new Error('HTTP '+r.status+' '+url);
+      if(!r.ok) throw new Error('HTTP '+r.status);
       const text=await r.text();
-      console.log('LUT text preview:', text.substring(0,200));
-      if(!text||text.length<10) throw new Error('Empty LUT');
       LUT_CACHE[name]=parseCube(text);
-      console.log('Parsed entries:', LUT_CACHE[name].data.length);
     }}
     const {{size,data}}=LUT_CACHE[name];
-    if(!data||data.length===0) throw new Error('Bad LUT data');
+    if(!data||data.length===0) throw new Error('Empty LUT');
     uploadLUT(size,data);
     currentName=name;
-    lutLabel.textContent=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
+    const display=name.replace(/_33_Rec709/g,'').replace(/_/g,' ');
+    lutHud.textContent=display;
   }}catch(e){{
-    console.error('LUT failed:',e);
+    console.error('LUT fail:',e);
     document.querySelectorAll('.lut-pill').forEach(p=>p.classList.toggle('active',p.dataset.name===currentName));
   }}
-  finally{{overlay.classList.remove('show');}}
+  finally{{
+    overlay.classList.remove('show');
+    document.querySelectorAll('.lut-pill').forEach(p=>p.classList.remove('loading'));
+  }}
 }}
 
 // LUT 条带
@@ -444,12 +703,15 @@ LUT_NAMES.forEach(name=>{{
 // 摄像头
 const video=document.createElement('video');
 video.autoplay=true; video.playsInline=true; video.muted=true;
-const liveTag=document.getElementById('live-tag');
+
+let stream = null;
+
 navigator.mediaDevices.getUserMedia({{
   video:{{facingMode:'environment',width:{{ideal:1920}},height:{{ideal:1080}}}},audio:false
-}}).then(stream=>{{
-  video.srcObject=stream; video.play();
-  liveTag.textContent='LIVE'; liveTag.classList.add('on');
+}}).then(s=>{{
+  stream = s;
+  video.srcObject=s; video.play();
+  liveTag.textContent='LIVE';
   video.addEventListener('loadedmetadata',()=>{{
     canvas.width=video.videoWidth; canvas.height=video.videoHeight;
     gl.viewport(0,0,canvas.width,canvas.height);
@@ -457,7 +719,7 @@ navigator.mediaDevices.getUserMedia({{
     requestAnimationFrame(render);
     switchLUT(LUT_NAMES[0]);
   }});
-}}).catch(()=>{{liveTag.textContent='NO CAM';}});
+}}).catch(()=>{{ liveTag.textContent='NO CAM'; }});
 
 function render(){{
   if(video.readyState>=2){{
@@ -468,23 +730,94 @@ function render(){{
   requestAnimationFrame(render);
 }}
 
-document.getElementById('ev-slider').addEventListener('input',e=>{{
-  const v=parseFloat(e.target.value);
-  gl.uniform1f(uEV,v);
-  document.getElementById('ev-display').textContent='EV '+(v>=0?'+':'')+v.toFixed(1);
+// ── 点击对焦 + 曝光
+const focusBox = document.getElementById('focus-box');
+document.getElementById('viewer').addEventListener('pointerdown', e=>{{
+  const x=e.clientX, y=e.clientY;
+  focusBox.style.left=x+'px';
+  focusBox.style.top=y+'px';
+  focusBox.classList.add('show');
+  setTimeout(()=>focusBox.classList.remove('show'), 1200);
+  // 隐藏曝光条
+  evBarVisible=false;
+  document.getElementById('ev-bar').classList.remove('show');
+  document.getElementById('ev-btn').classList.remove('active');
 }});
-document.getElementById('zoom-slider').addEventListener('input',e=>gl.uniform1f(uZoom,parseFloat(e.target.value)));
 
+// ── 缩放按钮
+const zoomLevels=[1,2,3];
+let zoomIdx=0;
+const zoomDisplay=document.getElementById('zoom-display');
+zoomDisplay.innerHTML='';
+zoomLevels.forEach((z,i)=>{{
+  const btn=document.createElement('button');
+  btn.className='zoom-btn'+(i===0?' active':'');
+  btn.textContent=z+'×';
+  btn.dataset.zoom=z;
+  btn.addEventListener('pointerdown',e=>{{
+    e.preventDefault();
+    zoomIdx=i; zoomValue=z;
+    gl.uniform1f(uZoom,z);
+    document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.toggle('active',b.dataset.zoom==z));
+  }});
+  zoomDisplay.appendChild(btn);
+}});
+
+// Pinch-to-zoom
+let lastDist=0;
+document.getElementById('viewer').addEventListener('touchstart',e=>{{
+  if(e.touches.length===2){{
+    lastDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  }}
+}},{{passive:true}});
+document.getElementById('viewer').addEventListener('touchmove',e=>{{
+  if(e.touches.length===2){{
+    const dist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    const delta=dist/lastDist;
+    zoomValue=Math.max(1,Math.min(4,zoomValue*delta));
+    gl.uniform1f(uZoom,zoomValue);
+    lastDist=dist;
+  }}
+}},{{passive:true}});
+
+// ── 曝光按钮
+const evBtn=document.getElementById('ev-btn');
+const evBar=document.getElementById('ev-bar');
+const evHud=document.getElementById('ev-hud');
+const evLabel=document.getElementById('ev-label');
+
+evBtn.addEventListener('pointerdown',e=>{{
+  e.preventDefault(); e.stopPropagation();
+  evBarVisible=!evBarVisible;
+  evBar.classList.toggle('show',evBarVisible);
+  evBtn.classList.toggle('active',evBarVisible);
+}});
+
+document.getElementById('ev-slider').addEventListener('input',e=>{{
+  evValue=parseFloat(e.target.value);
+  gl.uniform1f(uEV,evValue);
+  const sign=evValue>=0?'+':'';
+  evLabel.textContent=sign+evValue.toFixed(1);
+  evHud.textContent='EV '+sign+evValue.toFixed(1);
+  evHud.classList.add('show');
+  clearTimeout(evHud._t);
+  evHud._t=setTimeout(()=>evHud.classList.remove('show'),2000);
+}});
+
+// ── 快门
 const flash=document.getElementById('flash');
 document.getElementById('shutter').addEventListener('pointerdown',e=>{{
   e.preventDefault();
-  flash.classList.add('go'); setTimeout(()=>flash.classList.remove('go'),150);
+  flash.classList.add('go');
+  setTimeout(()=>flash.classList.remove('go'),120);
   const ts=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
+  const safeName=currentName.replace(/_33_Rec709/g,'');
   canvas.toBlob(blob=>{{
     const a=document.createElement('a');
-    a.download=`lumen_${{currentName.replace(/_33_Rec709/g,'')}}_${{ts}}.jpg`;
-    a.href=URL.createObjectURL(blob); a.click(); URL.revokeObjectURL(a.href);
-  }},'image/jpeg',0.93);
+    a.download=`lumen_${{safeName}}_${{ts}}.jpg`;
+    a.href=URL.createObjectURL(blob); a.click();
+    URL.revokeObjectURL(a.href);
+  }},'image/jpeg',0.95);
 }});
 </script>
 </body>
