@@ -185,12 +185,8 @@ os.makedirs(LUTS_DIR, exist_ok=True)
 # 检测运行环境，生成正确的静态文件 URL
 IS_CLOUD = os.path.exists('/mount/src')
 if IS_CLOUD:
-    # Streamlit Cloud：从环境变量或固定域名获取
-    STREAMLIT_URL = os.environ.get(
-        'STREAMLIT_URL',
-        'https://lumen-studio.streamlit.app'
-    )
-    LUT_STATIC_BASE = f"{STREAMLIT_URL}/app/static/luts"
+    # Cloud: 用 GitHub Raw 直接提供 LUT 文件，稳定可靠
+    LUT_STATIC_BASE = "https://raw.githubusercontent.com/cjrkljfsjiv-netizen/lut-app/main/static/luts"
 else:
     LUT_STATIC_BASE = "http://localhost:8501/app/static/luts" 
 
