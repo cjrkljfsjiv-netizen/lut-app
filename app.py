@@ -417,8 +417,10 @@ async function switchLUT(name){{
       const r=await fetch(url);
       if(!r.ok) throw new Error('HTTP '+r.status+' '+url);
       const text=await r.text();
+      console.log('LUT text preview:', text.substring(0,200));
       if(!text||text.length<10) throw new Error('Empty LUT');
       LUT_CACHE[name]=parseCube(text);
+      console.log('Parsed entries:', LUT_CACHE[name].data.length);
     }}
     const {{size,data}}=LUT_CACHE[name];
     if(!data||data.length===0) throw new Error('Bad LUT data');
