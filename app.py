@@ -112,6 +112,9 @@ section[data-testid="stSidebar"], [data-testid="stStatusWidget"] { display: none
 .stImage img { width: 100% !important; height: auto !important; display: block; }
 [data-testid="stHorizontalBlock"] { gap: 2px !important; }
 iframe { border: none !important; }
+
+/* 相机模式锁定滚动 */
+body.camera-mode { overflow: hidden !important; touch-action: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -197,7 +200,7 @@ else:
 # 本地：/app/static/luts/xxx.cube
 # ══════════════════════════════════════
 
-def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 820):
+def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501/app/static/luts", height: int = 640):
     lut_names_js = json.dumps(lut_names)
     html = f"""<!DOCTYPE html>
 <html>
@@ -210,7 +213,7 @@ def camera_component(lut_names: list, lut_base_url: str = "http://localhost:8501
 body{{
   background:#0a0a0a;
   font-family:-apple-system,sans-serif;
-  height:100svh;overflow:hidden;
+  height:100svh;overflow:hidden;position:fixed;width:100%;touch-action:none;
   user-select:none;color:#fff;
 }}
 
@@ -376,17 +379,22 @@ canvas{{width:100%;height:100%;object-fit:cover;display:block;}}
 /* EV 按钮 */
 #ev-btn{{
   background:transparent;border:none;
-  color:rgba(255,255,255,0.4);
-  font-size:18px;cursor:pointer;
   width:36px;height:36px;
   display:flex;align-items:center;justify-content:center;
-  border-radius:50%;
+  cursor:pointer;border-radius:50%;transition:all 0.15s;
+}}
+#ev-btn.active svg{{ stroke:rgba(255,255,255,0.9) !important; }}
+#ev-btn:active{{background:rgba(255,255,255,0.1);}}
+
+/* 翻转按钮 */
+#flip-btn{{
+  background:transparent;border:none;
+  width:36px;height:36px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;border-radius:50%;
   transition:all 0.15s;
 }}
-#ev-btn.active{{
-  color:rgba(255,255,255,0.9);
-  background:rgba(255,255,255,0.1);
-}}
+#flip-btn:active{{background:rgba(255,255,255,0.1);transform:rotate(180deg);}}
 
 /* 快门 */
 #shutter{{
@@ -434,7 +442,22 @@ canvas{{width:100%;height:100%;object-fit:cover;display:block;}}
 <div id="controls">
   <div id="zoom-btns"></div>
   <button id="shutter"><div id="shutter-inner"></div></button>
-  <button id="ev-btn" title="Exposure">&#9675;&#65291;</button>
+  <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+    <button id="flip-btn" title="Flip camera">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 4v6h6"/><path d="M23 20v-6h-6"/>
+        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+      </svg>
+    </button>
+    <button id="ev-btn" title="Exposure">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
+  </div>
 </div>
 
 <script>
@@ -604,16 +627,16 @@ document.getElementById('viewer').addEventListener('pointerdown',e=>{{
 }});
 
 // 缩放
-const zoomLevels=[1,2,3];
+const zoomLevels=[{label:'28mm',zoom:1},{label:'35mm',zoom:1.25},{label:'50mm',zoom:1.8}];
 const zoomBtns=document.getElementById('zoom-btns');
 zoomLevels.forEach((z,i)=>{{
   const btn=document.createElement('button');
   btn.className='zoom-btn'+(i===0?' active':'');
-  btn.textContent=z+'\u00d7';
-  btn.dataset.zoom=z;
+  btn.textContent=z.label;
+  btn.dataset.zoom=z.zoom;
   btn.addEventListener('pointerdown',e=>{{
-    e.preventDefault();zoomValue=z;gl.uniform1f(uZoom,z);
-    document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.toggle('active',parseFloat(b.dataset.zoom)===z));
+    e.preventDefault();zoomValue=z.zoom;gl.uniform1f(uZoom,z.zoom);
+    document.querySelectorAll('.zoom-btn').forEach(b=>b.classList.toggle('active',b.dataset.zoom==z.zoom));
   }});
   zoomBtns.appendChild(btn);
 }});
@@ -651,6 +674,23 @@ evSlider.addEventListener('input',e=>{{
   evReadout.classList.add('show');
   clearTimeout(evReadout._t);
   evReadout._t=setTimeout(()=>evReadout.classList.remove('show'),2000);
+}});
+
+// 翻转摄像头
+let facingMode = 'environment';
+document.getElementById('flip-btn').addEventListener('pointerdown', async e => {{
+  e.preventDefault();
+  facingMode = facingMode === 'environment' ? 'user' : 'environment';
+  if(video.srcObject) {{
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }}
+  try {{
+    const stream = await navigator.mediaDevices.getUserMedia({{
+      video:{{facingMode,width:{{ideal:1920}},height:{{ideal:1080}}}},audio:false
+    }});
+    video.srcObject = stream;
+    video.play();
+  }} catch(e) {{ console.error(e); }}
 }});
 
 // 快门
